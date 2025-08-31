@@ -243,14 +243,13 @@
         }
 
         function getInitialGameState(p1Id) {
-            setupTable();
-            const initialBalls = setupBalls();
+            const initialBallPositions = getInitialBallPositions(); 
             return {
-                balls: initialBalls.map(b => ({
-                    pos: {x: b.pos.x, y: b.pos.y},
-                    vel: {x: b.vel.x, y: b.vel.y},
+                balls: initialBallPositions.map(b => ({
+                    pos: b.pos, 
+                    vel: {x: 0, y: 0},
                     number: b.number,
-                    isPocketed: b.isPocketed
+                    isPocketed: false
                 })),
                 gameState: {
                     currentPlayer: 1,
@@ -267,8 +266,8 @@
         }
         
         async function createGame() {
-            const tempGameRef = doc(collection(db, `artifacts/${appId}/public/data/poolGames`));
-            const gameId = tempGameRef.id.substring(0, 6);
+            // Gera um ID numérico de 4 dígitos
+            const gameId = Math.floor(1000 + Math.random() * 9000).toString();
             currentGameId = gameId;
             playerNumber = 1;
             const initialState = getInitialGameState(currentUserId);
@@ -298,7 +297,7 @@
             gameContainer.classList.remove('hidden');
             gameIdDisplay.textContent = gameId;
             
-            setupTable(); // <-- CORREÇÃO: Chamar aqui depois de o container estar visível
+            setupTable(); 
 
             if (unsubscribeGame) unsubscribeGame();
             unsubscribeGame = onSnapshot(gameRef, (doc) => {
@@ -309,8 +308,11 @@
         }
         
         function updateLocalState(serverState) {
+            if (!table) return;
             localBalls = serverState.balls.map(b => {
-                const ball = new Ball(b.pos.x, b.pos.y, b.number);
+                const absoluteX = b.pos.x * table.width;
+                const absoluteY = b.pos.y * table.height;
+                const ball = new Ball(absoluteX, absoluteY, b.number);
                 ball.vel = new Vector(b.vel.x, b.vel.y);
                 ball.isPocketed = b.isPocketed;
                 return ball;
@@ -351,7 +353,8 @@
                 } else {
                     analyzeTurnResults();
                     const finalBallsState = localBalls.map(b => ({
-                        pos: { x: b.pos.x, y: b.pos.y }, vel: { x: 0, y: 0 },
+                        pos: { x: b.pos.x / table.width, y: b.pos.y / table.height }, 
+                        vel: { x: 0, y: 0 },
                         number: b.number, isPocketed: b.isPocketed
                     }));
                     const gameRef = doc(db, `artifacts/${appId}/public/data/poolGames`, currentGameId);
@@ -384,28 +387,36 @@
                 ]
             };
         }
-        function setupBalls() {
-            let tempBalls = [];
-            tempBalls.push(new Ball(table.width * 0.25, table.height / 2, 0));
+
+        function getInitialBallPositions() {
+            let positions = [];
+            const ballRadiusRatioX = BALL_RADIUS / (1000); 
+            const ballRadiusRatioY = BALL_RADIUS / (500);  
+            
+            positions.push({ pos: { x: 0.25, y: 0.5 }, number: 0 });
+
             const ballNumbers = [1, 10, 2, 12, 3, 14, 4, 15, 5, 9, 6, 11, 7, 13].sort(() => Math.random() - 0.5);
             let currentBall = 0;
-            const startX = table.width * 0.7;
-            const startY = table.height / 2;
+
+            const startXRatio = 0.7;
+            const startYRatio = 0.5;
+
             for (let i = 0; i < 5; i++) {
                 for (let j = 0; j <= i; j++) {
-                    const x = startX + i * (BALL_RADIUS * 2 * 0.866);
-                    const y = startY + j * (BALL_RADIUS * 2) - i * BALL_RADIUS;
+                    const x = startXRatio + i * (ballRadiusRatioX * 2 * 0.866);
+                    const y = startYRatio + j * (ballRadiusRatioY * 2) - i * ballRadiusRatioY;
                     let number;
                     if (i === 2 && j === 1) { number = 8; }
                     else { number = ballNumbers[currentBall++]; }
+
                     if (number !== undefined) {
-                        tempBalls.push(new Ball(x, y, number));
+                        positions.push({ pos: { x: x, y: y }, number: number });
                     }
                 }
             }
-            tempBalls.forEach(b => { b.pos.x = Math.round(b.pos.x); b.pos.y = Math.round(b.pos.y); });
-            return tempBalls;
+            return positions;
         }
+
         function drawTable() {
             ctx.fillStyle = '#0a5429';
             ctx.fillRect(BORDER_WIDTH, BORDER_WIDTH, table.width - BORDER_WIDTH * 2, table.height - BORDER_WIDTH * 2);
@@ -477,7 +488,7 @@
                 window.addEventListener('touchend', (e) => { e.preventDefault(); handlePointerUp(e); }, { passive: false });
                 window.addEventListener('touchmove', (e) => { e.preventDefault(); handlePointerMove(e); }, { passive: false });
 
-                window.addEventListener('resize', () => { if(currentGameId) { setupTable(); drawGame(); } });
+                window.addEventListener('resize', () => { if(currentGameId) { setupTable(); updateLocalState({ balls: gameState.balls.map(b => ({...b, pos: { x: b.pos.x, y: b.pos.y }})), gameState }); } });
             } else {
                 signInAnonymously(auth);
             }
@@ -574,7 +585,7 @@
                 foul = true;
                 const cueBallRef = localBalls.find(b => b.number === 0);
                 if (cueBallRef) {
-                    cueBallRef.pos = new Vector(table.width * 0.25, table.height / 2);
+                    cueBallRef.pos = new Vector(table.width * 0.25, table.height * 0.5);
                     cueBallRef.isPocketed = false;
                 }
             }
