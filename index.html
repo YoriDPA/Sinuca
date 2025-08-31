@@ -266,7 +266,6 @@
         }
         
         async function createGame() {
-            // Gera um ID numérico de 4 dígitos
             const gameId = Math.floor(1000 + Math.random() * 9000).toString();
             currentGameId = gameId;
             playerNumber = 1;
@@ -432,17 +431,17 @@
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
-            const clientX = evt.clientX || (evt.touches && evt.touches[0].clientX);
-            const clientY = evt.clientY || (evt.touches && evt.touches[0].clientY);
-            return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+            return { x: (evt.clientX - rect.left) * scaleX, y: (evt.clientY - rect.top) * scaleY };
         }
+
         function handlePointerDown(e) {
             if (localSimulation || !gameState) return;
             const isMyTurn = gameState.players[gameState.currentPlayer].id === currentUserId;
-            if (!isMyTurn || checkBallsMoving(localBalls) || cueBall.isPocketed) return;
+            if (!isMyTurn || checkBallsMoving(localBalls) || (cueBall && cueBall.isPocketed)) return;
             mouse.down = true;
             powerBarContainer.style.display = 'flex';
         }
+
         function handlePointerUp(e) {
             if (!mouse.down) return;
             mouse.down = false;
@@ -456,6 +455,7 @@
             }
             mouse.power = 0;
         }
+
         function handlePointerMove(e) {
             const pos = getMousePos(e);
             mouse.x = pos.x; mouse.y = pos.y;
@@ -481,14 +481,39 @@
                     navigator.clipboard.writeText(currentGameId).then(() => alert('ID do Jogo copiado!'));
                 });
 
+                // Eventos de Rato
                 canvas.addEventListener('mousedown', handlePointerDown);
                 window.addEventListener('mouseup', handlePointerUp);
                 window.addEventListener('mousemove', handlePointerMove);
-                canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handlePointerDown(e); }, { passive: false });
-                window.addEventListener('touchend', (e) => { e.preventDefault(); handlePointerUp(e); }, { passive: false });
-                window.addEventListener('touchmove', (e) => { e.preventDefault(); handlePointerMove(e); }, { passive: false });
+                
+                // Eventos de Toque
+                canvas.addEventListener('touchstart', (e) => { 
+                    e.preventDefault(); 
+                    handlePointerDown(e.touches[0]); 
+                }, { passive: false });
+                
+                window.addEventListener('touchend', (e) => { 
+                    if (mouse.down) {
+                        e.preventDefault(); 
+                        handlePointerUp(e.changedTouches[0]); 
+                    }
+                }, { passive: false });
 
-                window.addEventListener('resize', () => { if(currentGameId) { setupTable(); updateLocalState({ balls: gameState.balls.map(b => ({...b, pos: { x: b.pos.x, y: b.pos.y }})), gameState }); } });
+                window.addEventListener('touchmove', (e) => { 
+                    if (mouse.down) {
+                        e.preventDefault(); 
+                        handlePointerMove(e.touches[0]); 
+                    }
+                }, { passive: false });
+
+
+                window.addEventListener('resize', () => { 
+                    if(currentGameId) { 
+                        setupTable(); 
+                        // Força a atualização do estado local para recalcular as posições das bolas
+                        updateLocalState({ balls: gameState.balls, gameState: gameState }); 
+                    } 
+                });
             } else {
                 signInAnonymously(auth);
             }
